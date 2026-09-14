@@ -5,13 +5,38 @@ const pillsEl = document.getElementById('monthPills');
 const mainEl = document.getElementById('main');
 const searchEl = document.getElementById('searchInput');
 const clearBtn = document.getElementById('clearBtn');
+const resetChecksBtn = document.getElementById('resetChecksBtn');
 const noteEl = document.getElementById('resultNote');
 const statTotalEl = document.getElementById('statTotal');
 const statTotalFooterEl = document.getElementById('statTotalFooter');
 
+const CHECKS_KEY = 'ghc2026-checked-holidays';
+
 let DATA = [];
 let activeMonth = 0; // 0 = all
 let query = '';
+let checked = loadChecked();
+
+function rowKey(title, dateStr){
+  return title + '__' + dateStr;
+}
+
+function loadChecked(){
+  try{
+    const raw = localStorage.getItem(CHECKS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  }catch(err){
+    return new Set();
+  }
+}
+
+function saveChecked(){
+  try{
+    localStorage.setItem(CHECKS_KEY, JSON.stringify([...checked]));
+  }catch(err){
+    // localStorage unavailable (private browsing, storage full, etc.) — fail silently
+  }
+}
 
 function buildPills(){
   const allPill = document.createElement('button');
@@ -51,6 +76,15 @@ function highlight(text, q){
     escapeHtml(text.slice(idx + q.length));
 }
 
+function updateResultNote(filtered){
+  const q = query.trim();
+  const checkedInView = filtered.filter(row => checked.has(rowKey(row[1], row[2]))).length;
+  noteEl.textContent = filtered.length + (filtered.length === 1 ? ' holiday shown' : ' holidays shown') +
+    (activeMonth ? ' in ' + MONTHS[activeMonth-1] : ' across the year') +
+    (q ? (' matching "' + q + '"') : '') +
+    ' — ' + checkedInView + ' checked';
+}
+
 function render(){
   const q = query.trim().toLowerCase();
   const filtered = DATA.filter(row => {
@@ -60,9 +94,7 @@ function render(){
     return true;
   });
 
-  noteEl.textContent = filtered.length + (filtered.length === 1 ? ' holiday shown' : ' holidays shown') +
-    (activeMonth ? ' in ' + MONTHS[activeMonth-1] : ' across the year') +
-    (q ? (' matching "' + query.trim() + '"') : '');
+  updateResultNote(filtered);
 
   mainEl.innerHTML = '';
 
@@ -90,18 +122,44 @@ function render(){
     section.appendChild(heading);
 
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th class="col-title">Holiday</th><th class="col-date">Date</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th class="col-check"><span class="sr-only">Done</span></th><th class="col-title">Holiday</th><th class="col-date">Date</th></tr></thead>';
     const tbody = document.createElement('tbody');
 
     byMonth[m].forEach(row => {
       const [, title, dateStr] = row;
+      const key = rowKey(title, dateStr);
+      const isChecked = checked.has(key);
+
       const tr = document.createElement('tr');
+      if(isChecked) tr.classList.add('is-checked');
+
+      const tdCheck = document.createElement('td');
+      tdCheck.className = 'col-check';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'holiday-check';
+      checkbox.checked = isChecked;
+      checkbox.setAttribute('aria-label', 'Mark ' + title + ' as done');
+      checkbox.addEventListener('change', () => {
+        if(checkbox.checked){
+          checked.add(key);
+          tr.classList.add('is-checked');
+        }else{
+          checked.delete(key);
+          tr.classList.remove('is-checked');
+        }
+        saveChecked();
+        updateResultNote(filtered);
+      });
+      tdCheck.appendChild(checkbox);
+
       const tdTitle = document.createElement('td');
       tdTitle.className = 'col-title';
       tdTitle.innerHTML = highlight(title, query);
       const tdDate = document.createElement('td');
       tdDate.className = 'col-date';
       tdDate.textContent = dateStr.replace(', 2026', '');
+      tr.appendChild(tdCheck);
       tr.appendChild(tdTitle);
       tr.appendChild(tdDate);
       tbody.appendChild(tr);
@@ -123,6 +181,15 @@ clearBtn.addEventListener('click', () => {
   activeMonth = 0;
   [...pillsEl.children].forEach(p => p.classList.remove('active'));
   pillsEl.firstChild.classList.add('active');
+  render();
+});
+
+resetChecksBtn.addEventListener('click', () => {
+  if(checked.size === 0) return;
+  const ok = confirm('Uncheck all ' + checked.size + ' marked holidays? This cannot be undone.');
+  if(!ok) return;
+  checked.clear();
+  saveChecked();
   render();
 });
 
