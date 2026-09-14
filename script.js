@@ -129,7 +129,7 @@ clearBtn.addEventListener('click', () => {
 async function init(){
   buildPills();
   try{
-    const res = await fetch('assets/data.json');
+    const res = await fetch('data.json');
     DATA = await res.json();
   }catch(err){
     mainEl.innerHTML = '<div class="empty-state"><div class="big">Could not load data.json</div>' +
